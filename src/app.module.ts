@@ -1,35 +1,20 @@
-import { Module } from '@nestjs/common';
+import { Module, ValidationPipe } from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
+import { APP_FILTER, APP_PIPE } from '@nestjs/core';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
+import { DbExceptionFilter } from './common/filters/db-exception.filter';
+import { envFile, validateEnv } from './config/env';
 import { UsersModule } from './users/users.module';
 import { CustomersModule } from './customers/customers.module';
-
-// Ambiente: development (por defecto), qa o production. Jest define NODE_ENV=test,
-// así que los tests e2e usan la configuración de desarrollo.
-const nodeEnv = process.env.NODE_ENV ?? 'development';
-const envFile = nodeEnv === 'test' ? 'development' : nodeEnv;
-
-const REQUIRED_ENV = ['DB_HOST', 'DB_PORT', 'DB_USERNAME', 'DB_PASSWORD', 'DB_NAME'];
-
-// Falla al arrancar si falta alguna variable, en lugar de fallar al conectar a la BD
-function validateEnv(env: Record<string, unknown>) {
-  const missing = REQUIRED_ENV.filter((key) => !env[key]);
-  if (missing.length > 0) {
-    throw new Error(
-      `Faltan variables de entorno en .env.${envFile}: ${missing.join(', ')}`,
-    );
-  }
-  return env;
-}
 
 @Module({
   imports: [
     // Las variables del sistema (p. ej. las de Railway) tienen prioridad sobre el archivo
     ConfigModule.forRoot({
       isGlobal: true,
-      envFilePath: [`.env.${envFile}`],
+      envFilePath: [envFile],
       validate: validateEnv,
     }),
     TypeOrmModule.forRootAsync({
@@ -42,6 +27,7 @@ function validateEnv(env: Record<string, unknown>) {
         password: config.getOrThrow<string>('DB_PASSWORD'),
         database: config.getOrThrow<string>('DB_NAME'),
         autoLoadEntities: true,
+        // El esquema se maneja solo con migraciones (src/database/migrations)
         synchronize: false,
       }),
     }),
@@ -49,6 +35,19 @@ function validateEnv(env: Record<string, unknown>) {
     CustomersModule,
   ],
   controllers: [AppController],
-  providers: [AppService],
+  providers: [
+    AppService,
+    // Pipe y filtro globales declarados aquí (y no en main.ts) para que los e2e,
+    // que levantan AppModule sin pasar por main.ts, se comporten igual que la app
+    {
+      provide: APP_PIPE,
+      useValue: new ValidationPipe({
+        whitelist: true,
+        forbidNonWhitelisted: true,
+        transform: true,
+      }),
+    },
+    { provide: APP_FILTER, useClass: DbExceptionFilter },
+  ],
 })
 export class AppModule {}
