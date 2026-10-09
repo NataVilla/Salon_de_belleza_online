@@ -40,6 +40,9 @@ lerna-debug.log*
 .env.*
 !.env.example
 
+# Claude Code: se versiona .claude/settings.json y .claude/hooks/; la configuración personal no
+.claude/settings.local.json
+
 # temp directory
 .temp
 .tmp

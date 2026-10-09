@@ -1,7 +1,6 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
-// @ts-ignore: bcryptjs may not have bundled type declarations in this project
 import * as bcrypt from 'bcryptjs'; // <-- 1. Importamos bcrypt
 import { CreateUserDto } from './dto/create-user.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
