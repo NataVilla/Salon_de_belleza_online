@@ -18,7 +18,7 @@ implementación real es **NestJS 11 + TypeORM + PostgreSQL**; usa los docs para 
 - **Al terminar una tarea o grupo de tareas, y siempre antes de cada commit:** marcar `[x]` en `task.md` y agregar una
   entrada nueva **arriba** en `memory.md` (Hecho, Tareas, Decisiones, Archivos tocados, Siguiente paso).
   Las entradas anteriores nunca se editan ni se borran. `memory.md` va en el commit de la fase.
-- **Git:** una rama por fase (`fase-N-nombre`) → tests, lint y build en verde → commit → **visto bueno de Natalia** →
+- **Git:** una rama por fase (`fase-N-nombre`) → tests, lint, build y `pnpm audit --prod --audit-level high` en verde → commit → **visto bueno de Natalia** →
   push → PR hacia `main`. Nunca hay push directo a `main` ni push sin visto bueno. Detalle en `task.md` → *Flujo de trabajo*.
 - **Base de datos:** lectura libre solo en desarrollo. Toda escritura (migraciones, seed, DML/DDL, e2e o k6 que escriben;
   tareas `[BD]`) requiere autorización previa. QA y producción no se tocan nunca.
@@ -33,6 +33,8 @@ implementación real es **NestJS 11 + TypeORM + PostgreSQL**; usa los docs para 
 - Un solo archivo: `pnpm test -- src/customers/customers.service.spec.ts`
 - Un solo caso: `pnpm test -- -t "debería crear"`
 - `pnpm test:e2e` — levanta `AppModule` completo, requiere PostgreSQL real
+- `pnpm audit --prod --audit-level high` — vulnerabilidades conocidas (obligatorio antes de cada commit de fase). Excepciones
+  documentadas en `auditConfig.ignoreGhsas` de `pnpm-workspace.yaml`; los paquetes con script de instalación se deciden en `allowBuilds`
 - Prueba de carga (k6, no está en package.json): `k6 run volume-tests/customers.load.js` contra `localhost:3000`
 - Migraciones (escriben en la BD → pedir autorización): `pnpm migration:run` · `pnpm migration:revert` ·
   `pnpm migration:generate src/database/migrations/<Nombre>` (generar no escribe en la BD; con `--dryrun` solo muestra el SQL)
@@ -43,14 +45,16 @@ implementación real es **NestJS 11 + TypeORM + PostgreSQL**; usa los docs para 
   → el esquema se maneja solo con migraciones (`src/database/migrations/`, CLI con `src/database/data-source.ts`,
   que usa el mismo `.env` que la app). La primera es la *baseline* de `users` y `customers` (`IF NOT EXISTS`).
 - Globales en `app.module.ts` (`APP_PIPE`/`APP_FILTER`, para que los e2e también los tengan): `ValidationPipe`
-  (`whitelist`, `forbidNonWhitelisted`, `transform`) y `DbExceptionFilter` (`23505` → 400 con `field`, `23P01` → 409).
-- `src/common/`: enum `Role`, filtro de BD y helpers de hora de Bogotá (`time/bogota.ts`, UTC-5 fijo, fines exclusivos).
+  (`whitelist`, `forbidNonWhitelisted`, `transform`; `exceptionFactory` en `common/pipes/validation-exception.factory.ts`
+  traduce "property x should not exist") y `DbExceptionFilter` (`23505` → 400 con `field`, `23P01` → 409).
+- `src/common/`: enum `Role`, filtro de BD, `UuidPipe` (`pipes/uuid.pipe.ts`, `ParseUUIDPipe` con mensaje en español),
+  decoradores `@Trim()` y `@NormalizeEmail()` (trim + minúsculas) para DTO y helpers de hora de Bogotá (`time/bogota.ts`, UTC-5 fijo, fines exclusivos).
 - Un módulo por recurso (`users`, `customers`) con el mismo patrón: `entities/`, `dto/` (Update = `PartialType(Create)`),
-  service con `@InjectRepository`, controller con rutas `POST /create`, `GET /all`, `GET|PATCH|DELETE /:id`.
+  service con `@InjectRepository`, controller con rutas `POST /create`, `GET /all`, `GET|PATCH|DELETE /:id` (`UuidPipe` en `:id`).
 - Borrado lógico: `remove()` pone el flag activo en `false`; `findAll()` filtra solo activos.
-- Errores y mensajes al usuario en español (`NotFoundException`, `BadRequestException`).
-- `users`: contraseña hasheada con bcryptjs en create/update; `@Exclude()` + `ClassSerializerInterceptor` la ocultan;
-  `ParseUUIDPipe` en los `:id`; error PG `23505` → email duplicado.
+- Errores y mensajes al usuario en español (`NotFoundException`, `BadRequestException`). Los services no atrapan errores
+  de BD: los duplicados (`23505`) los traduce el `DbExceptionFilter` global.
+- `users`: contraseña hasheada con bcryptjs en create/update; `@Exclude()` + `ClassSerializerInterceptor` la ocultan.
 - `customers`: datos del cliente (document único, name, lastName, email, phone).
 
 ## Particularidades a tener en cuenta
@@ -58,7 +62,6 @@ implementación real es **NestJS 11 + TypeORM + PostgreSQL**; usa los docs para 
 - Todo DTO necesita decoradores de class-validator en cada propiedad: `forbidNonWhitelisted` rechaza (400) cualquier
   propiedad sin decorar.
 - `Customer` usa la propiedad `isActivate` (columna `is_active`); `User` usa `isActive`. Respetar cada nombre.
-- El DTO de creación de clientes vive en `customers/dto/create-user-dto.ts` (nombre heredado).
 - Configuración por ambiente: `.env.development` (por defecto), `.env.qa` y `.env.production`, elegidos con `NODE_ENV` (los tests de Jest usan desarrollo). Las variables del sistema tienen prioridad (Railway las define en su panel). Solo `.env.example` se versiona; si agregas una variable, agrégala también ahí y en `REQUIRED_ENV` de `src/config/env.ts` si es obligatoria. En PowerShell, para otro ambiente: `$env:NODE_ENV='qa'; pnpm start:dev`.
 - Patrón de los specs: mock del repositorio con `getRepositoryToken(Entity)` (ver `users.*.spec.ts` y `customers.*.spec.ts`).
 - ESLint 9 con flat config (`eslint.config.mjs`); Prettier con `endOfLine: auto` porque en Windows los archivos están en CRLF.
@@ -79,3 +82,4 @@ modifican citas pasadas), administrar servicios y precios (nombre, descripción,
 con citas activas). Estados de cita: activa, cancelada, cerrada (servicio realizado). Histórico para análisis del administrador.
 
 Aún no implementado: servicios, estilistas, agenda, citas, autenticación/roles, notificaciones.
+Hay un `GET /health` (app + `SELECT 1` a la BD) para el healthcheck de Railway.

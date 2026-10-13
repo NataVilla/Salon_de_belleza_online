@@ -5,6 +5,7 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import { DbExceptionFilter } from './common/filters/db-exception.filter';
+import { validationExceptionFactory } from './common/pipes/validation-exception.factory';
 import { envFile, validateEnv } from './config/env';
 import { UsersModule } from './users/users.module';
 import { CustomersModule } from './customers/customers.module';
@@ -45,6 +46,7 @@ import { CustomersModule } from './customers/customers.module';
         whitelist: true,
         forbidNonWhitelisted: true,
         transform: true,
+        exceptionFactory: validationExceptionFactory,
       }),
     },
     { provide: APP_FILTER, useClass: DbExceptionFilter },
