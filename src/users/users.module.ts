@@ -8,6 +8,8 @@ import { User } from './entities/user.entity';
   imports: [TypeOrmModule.forFeature([User])],
   controllers: [UsersController],
   providers: [UsersService],
-  exports: [TypeOrmModule], // Opcional: si otros módulos necesitan usar User
+  // Auth (Fase 2) usa el servicio, no el repositorio, para respetar sus reglas
+  // (solo activos, contraseña hasheada, email normalizado)
+  exports: [UsersService],
 })
 export class UsersModule {}

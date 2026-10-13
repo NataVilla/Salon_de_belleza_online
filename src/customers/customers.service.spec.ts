@@ -12,10 +12,11 @@ describe('CustomersService', () => {
     save: jest.fn(),
     find: jest.fn(),
     findOneBy: jest.fn(),
-    preload: jest.fn(),
+    merge: jest.fn((entity: object, changes: object) => Object.assign(entity, changes)),
   };
 
   beforeEach(async () => {
+    jest.clearAllMocks();
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         CustomersService,
@@ -47,17 +48,24 @@ describe('CustomersService', () => {
   });
 
   describe('findOne', () => {
-    it('debería retornar un cliente si existe', async () => {
+    it('debería retornar un cliente activo si existe', async () => {
       const expectedCustomer = { id: '1', name: 'Test' };
       mockCustomerRepository.findOneBy.mockResolvedValue(expectedCustomer);
 
       const customer = await service.findOne('1');
       expect(customer).toEqual(expectedCustomer);
+      expect(mockCustomerRepository.findOneBy).toHaveBeenCalledWith({
+        id: '1',
+        isActivate: true,
+      });
     });
 
-    it('debería lanzar NotFoundException si el cliente no existe', async () => {
+    // Con el filtro isActivate, un cliente borrado no aparece: la BD devuelve null
+    it('debería lanzar NotFoundException si el cliente no existe o está inactivo', async () => {
       mockCustomerRepository.findOneBy.mockResolvedValue(null);
-      await expect(service.findOne('1')).rejects.toThrow(NotFoundException);
+      await expect(service.findOne('1')).rejects.toThrow(
+        new NotFoundException('Cliente no encontrado.'),
+      );
     });
   });
 
@@ -76,23 +84,28 @@ describe('CustomersService', () => {
 
   describe('update', () => {
     it('debería actualizar y retornar el cliente', async () => {
-      const updateCustomerDto = { name: 'Test Updated' } as any;
-      const expectedCustomer = { id: '1', ...updateCustomerDto };
+      mockCustomerRepository.findOneBy.mockResolvedValue({
+        id: '1',
+        name: 'Test',
+        isActivate: true,
+      });
+      mockCustomerRepository.save.mockImplementation((c) => Promise.resolve(c));
 
-      mockCustomerRepository.preload.mockResolvedValue(expectedCustomer);
-      mockCustomerRepository.save.mockResolvedValue(expectedCustomer);
-
-      const result = await service.update('1', updateCustomerDto);
-      expect(result).toEqual(expectedCustomer);
+      const result = await service.update('1', { name: 'Test Updated' });
+      expect(result).toEqual({ id: '1', name: 'Test Updated', isActivate: true });
+      expect(mockCustomerRepository.findOneBy).toHaveBeenCalledWith({
+        id: '1',
+        isActivate: true,
+      });
     });
 
-    it('debería lanzar NotFoundException si el cliente a actualizar no existe', async () => {
-      const updateCustomerDto = { name: 'Test Updated' } as any;
-      mockCustomerRepository.preload.mockResolvedValue(null);
+    it('debería lanzar NotFoundException si el cliente no existe o está inactivo', async () => {
+      mockCustomerRepository.findOneBy.mockResolvedValue(null);
 
-      await expect(service.update('1', updateCustomerDto)).rejects.toThrow(
-        NotFoundException,
+      await expect(service.update('1', { name: 'Test Updated' })).rejects.toThrow(
+        new NotFoundException('Cliente no encontrado.'),
       );
+      expect(mockCustomerRepository.save).not.toHaveBeenCalled();
     });
   });
 
@@ -105,6 +118,13 @@ describe('CustomersService', () => {
       await service.remove('1');
       expect(customer.isActivate).toBe(false);
       expect(mockCustomerRepository.save).toHaveBeenCalledWith(customer);
+    });
+
+    it('debería lanzar NotFoundException si el cliente ya estaba borrado', async () => {
+      mockCustomerRepository.findOneBy.mockResolvedValue(null);
+
+      await expect(service.remove('1')).rejects.toThrow(NotFoundException);
+      expect(mockCustomerRepository.save).not.toHaveBeenCalled();
     });
   });
 });

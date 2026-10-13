@@ -6,10 +6,10 @@ import {
   Patch,
   Param,
   Delete,
-  ParseUUIDPipe,
   ClassSerializerInterceptor,
   UseInterceptors,
 } from '@nestjs/common';
+import { UuidPipe } from '../common/pipes/uuid.pipe';
 import { UsersService } from './users.service';
 import { CreateUserDto } from './dto/create-user.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
@@ -29,19 +29,19 @@ export class UsersController {
     return this.usersService.findAll();
   }
 
-  // ParseUUIDPipe valida que el param sea un UUID válido antes de llegar al servicio
+  // UuidPipe responde 400 si el id no es un UUID, antes de que llegue a la BD
   @Get(':id')
-  findOne(@Param('id', ParseUUIDPipe) id: string) {
+  findOne(@Param('id', UuidPipe) id: string) {
     return this.usersService.findOne(id);
   }
 
   @Patch(':id')
-  update(@Param('id', ParseUUIDPipe) id: string, @Body() updateUserDto: UpdateUserDto) {
+  update(@Param('id', UuidPipe) id: string, @Body() updateUserDto: UpdateUserDto) {
     return this.usersService.update(id, updateUserDto);
   }
 
   @Delete(':id')
-  remove(@Param('id', ParseUUIDPipe) id: string) {
+  remove(@Param('id', UuidPipe) id: string) {
     return this.usersService.remove(id);
   }
 }
